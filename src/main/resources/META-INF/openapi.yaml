@@ -1,0 +1,310 @@
+openapi: 3.0.3
+info:
+  title: HAPI FHIR Validator Service API
+  version: 1.0.0
+  description: REST API for validating FHIR resources with a warm Java validator engine.
+servers:
+  - url: http://localhost:8082
+paths:
+  /validate:
+    post:
+      summary: Compatibility validation endpoint
+      operationId: validateCompat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateRequest'
+      responses:
+        '200':
+          description: Validation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateResponse'
+        '400':
+          description: Invalid request payload or options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/validate:
+    post:
+      summary: Validate a FHIR resource
+      operationId: validateV1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateRequest'
+      responses:
+        '200':
+          description: Validation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateResponse'
+        '400':
+          description: Invalid request payload or options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/capabilities:
+    get:
+      summary: Service capabilities and supported options
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: Capabilities returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilitiesResponse'
+  /v1/warmup:
+    post:
+      summary: Warmup validator context and optional IGs
+      operationId: warmup
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WarmupRequest'
+      responses:
+        '200':
+          description: Warmup completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WarmupResponse'
+        '400':
+          description: Invalid warmup request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/ready:
+    get:
+      summary: Readiness status
+      operationId: ready
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+  /v1/config:
+    get:
+      summary: Effective runtime configuration
+      operationId: config
+      responses:
+        '200':
+          description: Config returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeConfigResponse'
+components:
+  schemas:
+    ValueRow:
+      type: object
+      properties:
+        value:
+          type: string
+      additionalProperties: false
+    ValidateOptions:
+      type: object
+      required:
+        - fhir_version
+        - source_format
+      properties:
+        label:
+          type: string
+        fhir_version:
+          type: string
+          example: '4.0.1'
+        source_format:
+          type: string
+          enum: [json, xml]
+        implementation_guides:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValueRow'
+        profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValueRow'
+        bundle_target:
+          type: string
+        bundle_profile:
+          type: string
+        terminology_server:
+          type: string
+          description: Use n/a to disable terminology server
+        terminology_cache:
+          type: string
+          description: Use n/a to disable terminology cache
+        output_style:
+          type: string
+          enum: [json]
+          default: json
+        severity_floor:
+          type: string
+          enum: [hint, warning, error]
+        best_practice:
+          type: string
+          enum: [ignore, hint, warning, error]
+        native_schema:
+          type: boolean
+        check_references:
+          type: boolean
+        ig_recurse:
+          type: boolean
+        validation_timeout_ms:
+          type: integer
+          format: int64
+          minimum: 1
+        max_validation_messages:
+          type: integer
+          format: int32
+          minimum: 1
+      additionalProperties: false
+    ValidateRequest:
+      type: object
+      required:
+        - opts
+        - resourceBase64
+      properties:
+        opts:
+          $ref: '#/components/schemas/ValidateOptions'
+        resourceBase64:
+          type: string
+          format: byte
+          description: Base64-encoded FHIR resource bytes (JSON or XML)
+      additionalProperties: false
+    ValidateResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        outcomeBase64:
+          type: string
+          format: byte
+          description: Base64-encoded OperationOutcome JSON
+        exitCode:
+          type: integer
+          format: int32
+        stderr:
+          type: string
+        durationMs:
+          type: integer
+          format: int64
+        requestId:
+          type: string
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ValidateResponse'
+      required:
+        - errorCode
+        - errorMessage
+        - requestId
+    WarmupRequest:
+      type: object
+      properties:
+        fhir_version:
+          type: string
+          example: '4.0.1'
+        implementation_guides:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValueRow'
+      additionalProperties: false
+    WarmupResponse:
+      type: object
+      properties:
+        warmed:
+          type: boolean
+        durationMs:
+          type: integer
+          format: int64
+        requestId:
+          type: string
+        message:
+          type: string
+    ReadyResponse:
+      type: object
+      properties:
+        ready:
+          type: boolean
+        maxConcurrency:
+          type: integer
+        availablePermits:
+          type: integer
+        terminologyMode:
+          type: string
+        status:
+          type: string
+    RuntimeConfigResponse:
+      type: object
+      properties:
+        maxConcurrency:
+          type: integer
+        maxRequestBodyBytes:
+          type: integer
+          format: int64
+        prometheusEnabled:
+          type: boolean
+        openApiPath:
+          type: string
+    CapabilitiesResponse:
+      type: object
+      properties:
+        service:
+          type: string
+        version:
+          type: string
+        endpoints:
+          type: array
+          items:
+            type: string
+        supportedFhirVersions:
+          type: array
+          items:
+            type: string
+        invariants:
+          type: object
+          additionalProperties:
+            type: string
+        options:
+          type: object
+          additionalProperties:
+            type: string
