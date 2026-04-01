@@ -12,11 +12,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/v1': {
-        target: 'http://localhost:8082',
+        target: 'http://fhir-validator:8082',
         changeOrigin: true,
       },
       '/validate': {
-        target: 'http://localhost:8082',
+        target: 'http://fhir-validator:8082',
         changeOrigin: true,
       },
     },

@@ -260,7 +260,9 @@ Notes:
 - The jar is persisted in host path `./data` (mounted to `/app/data` in container), so subsequent restarts do not re-download it.
 - For a 4 GB server, defaults are tuned to `JAVA_TOOL_OPTIONS=-Xms256m -Xmx1536m -XX:+UseG1GC` and `VALIDATOR_MAX_CONCURRENCY=2`.
 - `fhir-validator-ui` serves the React app on `http://localhost:5173` and proxies API requests to the validator service.
+- If UI and API are on the same Docker host/network, keep `VITE_API_BASE_URL` empty and use the Vite proxy.
 - For a remote validator host, set `VITE_API_BASE_URL` in `docker-compose.yml` (example: `http://135.220.74.18:8082`).
+- In Docker Compose, the UI container mounts the repository root and runs from `ui/` so `npm run gen:types` can read `src/main/resources/META-INF/openapi.yaml`.
 
 If this is your first run with the bind mount, initialize writable permissions:
 

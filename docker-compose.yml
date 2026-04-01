@@ -27,13 +27,13 @@ services:
     image: node:20-alpine
     container_name: fhir-validator-ui
     restart: unless-stopped
-    working_dir: /app
+    working_dir: /workspace/ui
     command: sh -c "npm install --cache .npm-cache && npm run gen:types && npm run dev -- --host 0.0.0.0 --port 5173"
     ports:
       - "5173:5173"
     environment:
-      VITE_API_BASE_URL: "http://135.220.74.18:8082"
+      VITE_API_BASE_URL: ""
     volumes:
-      - ./ui:/app
+      - ./:/workspace
     depends_on:
       - fhir-validator
