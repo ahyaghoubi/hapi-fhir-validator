@@ -29,17 +29,30 @@ public class Hl7ValidationEngine implements ValidatorEngine {
   private Semaphore permits;
   private int maxConcurrency;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private final Object engineLock = new Object();
+  private volatile ValidationEngine sharedEngine;
+  private volatile String sharedEngineVersion;
+  private volatile boolean engineWarm;
   @Inject
   IgSourceResolver igSourceResolver;
 
   @ConfigProperty(name = "validator.max-concurrency", defaultValue = "4")
   int configuredMaxConcurrency;
+  @ConfigProperty(name = "validator.startup.fhir-version", defaultValue = "4.0.1")
+  String configuredStartupFhirVersion;
 
   @PostConstruct
   void init() {
     // Keep it simple: bound concurrent validations to avoid memory spikes.
     maxConcurrency = Math.max(1, configuredMaxConcurrency);
     permits = new Semaphore(maxConcurrency);
+    String startupVersion = normalizedVersion(configuredStartupFhirVersion);
+    synchronized (engineLock) {
+      sharedEngine = buildEngine(startupVersion);
+      sharedEngineVersion = startupVersion;
+      engineWarm = true;
+    }
+    log.info("validator engine initialized at startup version={}", startupVersion);
   }
 
   @Override
@@ -66,48 +79,46 @@ public class Hl7ValidationEngine implements ValidatorEngine {
     // NOTE: The HL7 validator uses an R5 internal model but validates R2-R5; fhirVersion selects context.
     // We keep a per-request engine for safety; caches are controlled by the HL7 libraries via system props/env.
     try {
-      ValidationEngine engine = new ValidationEngine.ValidationEngineBuilder()
-          .withVersion(opts.fhirVersion)
-          .fromNothing();
-
-      IgSourceResolver.ResolvedSources resolvedIgs = igSourceResolver.resolve(opts.implementationGuides);
-      try {
-        // Load IGs (packages, folders, tgz, staged uploads, URL-downloaded temp files).
-        for (String ig : resolvedIgs.values()) {
-          boolean recursive = Boolean.TRUE.equals(opts.igRecurse);
-          try {
-            engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, recursive);
-          } catch (Exception e) {
-            throw new IllegalArgumentException("failed to load implementation guide: " + ig + " (" + e.getMessage() + ")");
+      synchronized (engineLock) {
+        ValidationEngine engine = getOrRebuildEngine(opts.fhirVersion);
+        IgSourceResolver.ResolvedSources resolvedIgs = igSourceResolver.resolve(opts.implementationGuides);
+        try {
+          // Load IGs (packages, folders, tgz, staged uploads, URL-downloaded temp files).
+          for (String ig : resolvedIgs.values()) {
+            boolean recursive = Boolean.TRUE.equals(opts.igRecurse);
+            try {
+              engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, recursive);
+            } catch (Exception e) {
+              throw new IllegalArgumentException("failed to load implementation guide: " + ig + " (" + e.getMessage() + ")");
+            }
           }
+
+          // Profiles to validate against (canonical URLs)
+          List<String> profiles = valueRows(opts.profiles);
+
+          EngineOptionMapper.apply(engine, opts);
+
+          // Validate.
+          InputStream in = new ByteArrayInputStream(resourceBytes);
+          Manager.FhirFormat format = toFhirFormat(opts.sourceFormat);
+          // severity floor and best-practice are CLI-centric; not all map cleanly. Keep defaults.
+
+          // HL7 engine can return an OperationOutcome; we serialize to JSON and apply the same valid rule.
+          org.hl7.fhir.r5.model.OperationOutcome outcome = engine.validate(format, in, profiles);
+          byte[] outcomeJson = new JsonParser().composeString(outcome).getBytes(StandardCharsets.UTF_8);
+          boolean valid = computeValidFromOutcomeJson(outcomeJson);
+
+          ValidateResult r = new ValidateResult();
+          r.valid = valid;
+          r.outcomeJson = outcomeJson;
+          r.exitCode = valid ? 0 : 1;
+          r.stderr = "";
+          r.durationMs = (System.nanoTime() - start) / 1_000_000L;
+          r.requestId = requestId;
+          return r;
+        } finally {
+          igSourceResolver.cleanup(resolvedIgs);
         }
-
-      // Profiles to validate against (canonical URLs)
-      List<String> profiles = valueRows(opts.profiles);
-
-      EngineOptionMapper.apply(engine, opts);
-
-      // Validate.
-      InputStream in = new ByteArrayInputStream(resourceBytes);
-      Manager.FhirFormat format = toFhirFormat(opts.sourceFormat);
-      // severity floor and best-practice are CLI-centric; not all map cleanly. Keep defaults.
-
-      // HL7 engine can return an OperationOutcome; we serialize to JSON and apply the same valid rule.
-      // Current ValidationEngine API validates with format + stream + profiles.
-      org.hl7.fhir.r5.model.OperationOutcome outcome = engine.validate(format, in, profiles);
-      byte[] outcomeJson = new JsonParser().composeString(outcome).getBytes(StandardCharsets.UTF_8);
-      boolean valid = computeValidFromOutcomeJson(outcomeJson);
-
-        ValidateResult r = new ValidateResult();
-        r.valid = valid;
-        r.outcomeJson = outcomeJson;
-        r.exitCode = valid ? 0 : 1;
-        r.stderr = "";
-        r.durationMs = (System.nanoTime() - start) / 1_000_000L;
-        r.requestId = requestId;
-        return r;
-      } finally {
-        igSourceResolver.cleanup(resolvedIgs);
       }
     } catch (Exception e) {
       log.warn("validation failed requestId={}", requestId, e);
@@ -149,22 +160,22 @@ public class Hl7ValidationEngine implements ValidatorEngine {
 
   @Override
   public void warmup(String fhirVersion, List<ValueRow> implementationGuides, String requestId) {
-    String version = (fhirVersion == null || fhirVersion.isBlank()) ? "4.0.1" : fhirVersion.trim();
+    String version = normalizedVersion(fhirVersion);
     try {
-      ValidationEngine engine = new ValidationEngine.ValidationEngineBuilder()
-          .withVersion(version)
-          .fromNothing();
-      IgSourceResolver.ResolvedSources resolvedIgs = igSourceResolver.resolve(implementationGuides);
-      try {
-        for (String ig : resolvedIgs.values()) {
-          try {
-            engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, true);
-          } catch (Exception e) {
-            throw new IllegalArgumentException("failed to warmup implementation guide: " + ig + " (" + e.getMessage() + ")");
+      synchronized (engineLock) {
+        ValidationEngine engine = getOrRebuildEngine(version);
+        IgSourceResolver.ResolvedSources resolvedIgs = igSourceResolver.resolve(implementationGuides);
+        try {
+          for (String ig : resolvedIgs.values()) {
+            try {
+              engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, true);
+            } catch (Exception e) {
+              throw new IllegalArgumentException("failed to warmup implementation guide: " + ig + " (" + e.getMessage() + ")");
+            }
           }
+        } finally {
+          igSourceResolver.cleanup(resolvedIgs);
         }
-      } finally {
-        igSourceResolver.cleanup(resolvedIgs);
       }
       log.info("warmup completed requestId={} version={}", requestId, version);
     } catch (Exception e) {
@@ -179,8 +190,35 @@ public class Hl7ValidationEngine implements ValidatorEngine {
     out.maxConcurrency = maxConcurrency;
     out.availablePermits = permits == null ? 0 : permits.availablePermits();
     out.terminologyMode = "runtime-configurable";
-    out.status = out.ready ? "ready" : "initializing";
+    out.warmInMemory = engineWarm;
+    out.warmVersion = sharedEngineVersion;
+    out.status = (out.ready && engineWarm) ? "ready" : "initializing";
     return out;
+  }
+
+  private ValidationEngine getOrRebuildEngine(String requestedVersion) {
+    String normalizedRequested = normalizedVersion(requestedVersion);
+    if (sharedEngine == null || !normalizedRequested.equals(sharedEngineVersion)) {
+      sharedEngine = buildEngine(normalizedRequested);
+      sharedEngineVersion = normalizedRequested;
+      engineWarm = true;
+      log.info("validator engine rebuilt in-memory version={}", normalizedRequested);
+    }
+    return sharedEngine;
+  }
+
+  private static ValidationEngine buildEngine(String fhirVersion) {
+    try {
+      return new ValidationEngine.ValidationEngineBuilder()
+          .withVersion(fhirVersion)
+          .fromNothing();
+    } catch (Exception e) {
+      throw new IllegalArgumentException("failed to initialize validator engine version " + fhirVersion + ": " + e.getMessage());
+    }
+  }
+
+  private static String normalizedVersion(String fhirVersion) {
+    return (fhirVersion == null || fhirVersion.isBlank()) ? "4.0.1" : fhirVersion.trim();
   }
 
   private static Manager.FhirFormat toFhirFormat(String sourceFormat) {

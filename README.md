@@ -309,6 +309,19 @@ The warm service is intended for **high-throughput** validation where JVM startu
 
 **Important:** service mode supports **`output_style=json` only** to keep the `valid` rule well-defined (it is derived by parsing OperationOutcome JSON severities).
 
+### In-memory warm engine behavior
+
+- On startup, the service initializes a single in-memory `ValidationEngine` (default version `4.0.1`).
+- Validate requests reuse that singleton engine to avoid per-request engine rebuild overhead.
+- Requests are synchronized around engine mutation/validation to keep behavior safe with a shared engine.
+- If a request targets a different `fhir_version`, the singleton engine is rebuilt for that version.
+- `/v1/warmup` warms the same singleton engine.
+- `GET /v1/ready` now exposes:
+  - `warmInMemory` (`true` when singleton engine is initialized)
+  - `warmVersion` (current in-memory engine FHIR version)
+
+Tradeoff: because this is a single shared engine, IGs loaded by one request remain in the in-memory context and may influence later requests.
+
 ### Run locally (service)
 
 From the project root (requires Java 17 and Maven):

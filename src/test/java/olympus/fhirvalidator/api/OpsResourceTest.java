@@ -26,6 +26,7 @@ class OpsResourceTest {
         .then()
         .statusCode(200)
         .body("ready", equalTo(true))
+        .body("warmInMemory", equalTo(true))
         .body("maxConcurrency", notNullValue());
   }
 
