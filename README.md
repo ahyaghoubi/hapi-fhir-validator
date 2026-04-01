@@ -224,7 +224,15 @@ docker compose down
 
 Notes:
 - `validator_cli.jar` is downloaded on first startup if missing.
-- The jar is persisted in Docker volume `validator_data` (`/app/data` in container), so subsequent restarts do not re-download it.
+- The jar is persisted in host path `./data` (mounted to `/app/data` in container), so subsequent restarts do not re-download it.
+- For a 4 GB server, defaults are tuned to `JAVA_TOOL_OPTIONS=-Xms256m -Xmx1536m -XX:+UseG1GC` and `VALIDATOR_MAX_CONCURRENCY=2`.
+
+If this is your first run with the bind mount, initialize writable permissions:
+
+```bash
+mkdir -p data
+sudo chown -R 10001:10001 data
+```
 
 ---
 
