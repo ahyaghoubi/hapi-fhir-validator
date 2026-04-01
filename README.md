@@ -84,6 +84,12 @@ The service returns **OperationOutcome** bytes (with **`output_style`** as confi
 
 Each non-empty `implementation_guides[].value` becomes one **`-ig`** argument.
 
+Supported sources can be mixed in one request:
+- package id/version (for example `hl7.fhir.us.core#6.1.0`)
+- local path
+- URL (`https://...`) downloaded to a temporary local file before validation
+- staged references returned from `POST /v1/igs/upload` (format `staged://...`)
+
 ### Package registry (typical)
 
 | Pattern | Example | Meaning |
@@ -107,6 +113,27 @@ Examples: `hl7.fhir.uv.ips#2.0.0-ballot`, `hl7.fhir.uv.extensions.r4#5.1.0`. For
 ### URL
 
 Example: `https://build.fhir.org/ig/HL7/US-Core/` — requires network; must be loadable by your JAR version.
+
+For archive URLs like `https://nw-gmsa.github.io/package.tgz`, the service downloads the URL and passes the temporary file to the validator engine.
+
+### Upload from UI / API
+
+```bash
+curl -sS -X POST "http://localhost:8082/v1/igs/upload" \
+  -F "file=@./package.tgz"
+```
+
+Example response:
+
+```json
+{
+  "requestId": "b8e6fe35-f4d4-4f9f-a2cb-68fdb8f74737",
+  "reference": "staged://4d8...-package.tgz",
+  "filename": "package.tgz"
+}
+```
+
+Use `reference` as an `implementation_guides[].value` in `/v1/validate`.
 
 ### Multiple IGs
 
@@ -139,6 +166,7 @@ Primary API surface:
 |----------|--------|---------|
 | `/v1/validate` | `POST` | Primary validation endpoint (base64 payload + options). |
 | `/validate` | `POST` | Compatibility alias for existing callers. |
+| `/v1/igs/upload` | `POST` | Upload IG file (`multipart/form-data`) and receive a staged reference. |
 | `/v1/capabilities` | `GET` | Supported versions, options, invariants, and endpoint list. |
 | `/v1/warmup` | `POST` | Preload validator context and optional IGs. |
 | `/v1/ready` | `GET` | Readiness + concurrency status. |
@@ -338,6 +366,7 @@ mvn -q test
 - Java service docs are REST-first and aligned to the Quarkus service in this repository.
 - Added startup bootstrap that downloads `validator_cli.jar` to `data/validator_cli.jar` when missing, and ignores it in Git.
 - Updated service integration for `org.hl7.fhir.validation` 6.3.0 API compatibility.
+- Added `implementation_guides` URL support and IG upload staging endpoint (`/v1/igs/upload`).
 
 ---
 

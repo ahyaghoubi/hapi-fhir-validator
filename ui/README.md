@@ -6,6 +6,7 @@ Frontend application for the Quarkus validator service in this repository.
 
 - Full validation workflow against `POST /v1/validate`
 - Complete `ValidateOptions` coverage (including compatibility bundle fields)
+- Implementation guide sources from text input (package id/path/URL) and uploaded IG files
 - Base64 payload encoding and OperationOutcome decoding
 - Operational views for `ready`, `capabilities`, `config`, and `warmup`
 - Typed API contract generated from backend OpenAPI
@@ -40,6 +41,12 @@ Vite runs on `http://localhost:5173`.
 - `VITE_API_BASE_URL` (optional): API base URL prefix.
   - Default is empty string, so browser calls `/v1/*` on same origin.
   - For split-host deployments, set this value at build time.
+
+## IG Inputs
+
+- Use "Implementation guides" text inputs for package ids, local paths visible to backend, or URLs.
+- Use the IG file picker for `.tgz`, `.json`, or `.xml`; files are uploaded to `POST /v1/igs/upload`.
+- Uploaded files return `staged://...` references and are automatically included in `implementation_guides` for validate requests.
 
 ## Directory Notes
 

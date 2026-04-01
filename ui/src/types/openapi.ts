@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/igs/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload an IG file and return a staged reference */
+        post: operations["uploadIg"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/capabilities": {
         parameters: {
             query?: never;
@@ -172,6 +189,12 @@ export interface components {
             };
         };
         ErrorResponse: WithRequired<components["schemas"]["ValidateResponse"], "errorCode" | "errorMessage" | "requestId">;
+        IgUploadResponse: {
+            requestId?: string;
+            /** @description Staged IG reference suitable for implementation_guides[].value */
+            reference?: string;
+            filename?: string;
+        };
         WarmupRequest: {
             /** @example 4.0.1 */
             fhir_version?: string;
@@ -284,6 +307,42 @@ export interface operations {
                 };
             };
             /** @description Invalid request payload or options */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadIg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description IG staged for validation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IgUploadResponse"];
+                };
+            };
+            /** @description Invalid upload payload */
             400: {
                 headers: {
                     [name: string]: unknown;

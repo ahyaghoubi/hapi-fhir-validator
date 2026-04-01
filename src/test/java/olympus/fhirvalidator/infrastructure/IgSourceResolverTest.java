@@ -27,7 +27,7 @@ class IgSourceResolverTest {
     server.start();
     try {
       IgUploadStore uploadStore = new IgUploadStore();
-      uploadStore.configuredUploadDir = Files.createTempDirectory("ig-upload-test").toString();
+      uploadStore.uploadDirOverride = Files.createTempDirectory("ig-upload-test");
       IgSourceResolver resolver = new IgSourceResolver();
       resolver.uploadStore = uploadStore;
       resolver.urlTimeoutMs = 5000L;
@@ -53,7 +53,7 @@ class IgSourceResolverTest {
     Files.writeString(staged, "x");
 
     IgUploadStore uploadStore = new IgUploadStore();
-    uploadStore.configuredUploadDir = dir.toString();
+    uploadStore.uploadDirOverride = dir;
     IgSourceResolver resolver = new IgSourceResolver();
     resolver.uploadStore = uploadStore;
 
@@ -66,7 +66,7 @@ class IgSourceResolverTest {
   @Test
   void throwsForMissingStagedReference() {
     IgUploadStore uploadStore = new IgUploadStore();
-    uploadStore.configuredUploadDir = Path.of(System.getProperty("java.io.tmpdir"), "ig-missing-test").toString();
+    uploadStore.uploadDirOverride = Path.of(System.getProperty("java.io.tmpdir"), "ig-missing-test");
     IgSourceResolver resolver = new IgSourceResolver();
     resolver.uploadStore = uploadStore;
 

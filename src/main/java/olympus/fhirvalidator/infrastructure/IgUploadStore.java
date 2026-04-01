@@ -5,18 +5,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 
 @ApplicationScoped
 public class IgUploadStore {
   private static final String STAGED_PREFIX = "staged://";
-
-  @ConfigProperty(name = "validator.ig.upload-dir", defaultValue = "")
-  String configuredUploadDir;
+  Path uploadDirOverride;
 
   public String stage(FileUpload upload) throws IOException {
     if (upload == null) {
@@ -54,9 +50,9 @@ public class IgUploadStore {
 
   private Path ensureUploadDir() {
     try {
-      Path dir = configuredUploadDir == null || configuredUploadDir.isBlank()
-          ? Path.of(System.getProperty("java.io.tmpdir"), "hapi-fhir-validator-igs")
-          : Path.of(configuredUploadDir);
+      Path dir = uploadDirOverride != null
+          ? uploadDirOverride
+          : Path.of(System.getProperty("java.io.tmpdir"), "hapi-fhir-validator-igs");
       Files.createDirectories(dir);
       return dir;
     } catch (IOException e) {
