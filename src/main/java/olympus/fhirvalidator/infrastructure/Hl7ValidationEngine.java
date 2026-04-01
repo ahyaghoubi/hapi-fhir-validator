@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Semaphore;
+import org.hl7.fhir.r5.elementmodel.Manager;
+import org.hl7.fhir.r5.formats.JsonParser;
 import org.hl7.fhir.validation.ValidationEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,37 +63,30 @@ public class Hl7ValidationEngine implements ValidatorEngine {
     // NOTE: The HL7 validator uses an R5 internal model but validates R2-R5; fhirVersion selects context.
     // We keep a per-request engine for safety; caches are controlled by the HL7 libraries via system props/env.
     try {
-      ValidationEngine engine = new ValidationEngine(opts.fhirVersion);
+      ValidationEngine engine = new ValidationEngine.ValidationEngineBuilder()
+          .withVersion(opts.fhirVersion)
+          .fromNothing();
 
       // Load IGs (packages, folders, tgz, etc.)
       for (String ig : valueRows(opts.implementationGuides)) {
-        engine.loadIg(ig, true);
+        boolean recursive = Boolean.TRUE.equals(opts.igRecurse);
+        engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, recursive);
       }
 
       // Profiles to validate against (canonical URLs)
       List<String> profiles = valueRows(opts.profiles);
 
-      // Bundle focus validation (message bundle)
-      String bundleTarget = emptyToNull(opts.bundleTarget);
-      String bundleProfile = emptyToNull(opts.bundleProfile);
-
       EngineOptionMapper.apply(engine, opts);
 
       // Validate.
       InputStream in = new ByteArrayInputStream(resourceBytes);
+      Manager.FhirFormat format = toFhirFormat(opts.sourceFormat);
       // severity floor and best-practice are CLI-centric; not all map cleanly. Keep defaults.
 
       // HL7 engine can return an OperationOutcome; we serialize to JSON and apply the same valid rule.
-      org.hl7.fhir.r5.model.OperationOutcome outcome;
-      if (bundleTarget != null && bundleProfile != null) {
-        outcome = engine.validateBundle(in, opts.sourceFormat, bundleTarget, bundleProfile, profiles);
-      } else if (!profiles.isEmpty()) {
-        outcome = engine.validate(in, opts.sourceFormat, profiles);
-      } else {
-        outcome = engine.validate(in, opts.sourceFormat);
-      }
-
-      byte[] outcomeJson = engine.getContext().newJsonParser().setPrettyPrint(false).encodeResourceToString(outcome).getBytes(StandardCharsets.UTF_8);
+      // Current ValidationEngine API validates with format + stream + profiles.
+      org.hl7.fhir.r5.model.OperationOutcome outcome = engine.validate(format, in, profiles);
+      byte[] outcomeJson = new JsonParser().composeString(outcome).getBytes(StandardCharsets.UTF_8);
       boolean valid = computeValidFromOutcomeJson(outcomeJson);
 
       ValidateResult r = new ValidateResult();
@@ -140,19 +135,15 @@ public class Hl7ValidationEngine implements ValidatorEngine {
     }
   }
 
-  private static String emptyToNull(String s) {
-    if (s == null) return null;
-    String t = s.trim();
-    return t.isEmpty() ? null : t;
-  }
-
   @Override
   public void warmup(String fhirVersion, List<ValueRow> implementationGuides, String requestId) {
     String version = (fhirVersion == null || fhirVersion.isBlank()) ? "4.0.1" : fhirVersion.trim();
     try {
-      ValidationEngine engine = new ValidationEngine(version);
+      ValidationEngine engine = new ValidationEngine.ValidationEngineBuilder()
+          .withVersion(version)
+          .fromNothing();
       for (String ig : valueRows(implementationGuides)) {
-        engine.loadIg(ig, true);
+        engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, true);
       }
       log.info("warmup completed requestId={} version={}", requestId, version);
     } catch (Exception e) {
@@ -169,6 +160,13 @@ public class Hl7ValidationEngine implements ValidatorEngine {
     out.terminologyMode = "runtime-configurable";
     out.status = out.ready ? "ready" : "initializing";
     return out;
+  }
+
+  private static Manager.FhirFormat toFhirFormat(String sourceFormat) {
+    if (sourceFormat != null && "xml".equalsIgnoreCase(sourceFormat.trim())) {
+      return Manager.FhirFormat.XML;
+    }
+    return Manager.FhirFormat.JSON;
   }
 }
 

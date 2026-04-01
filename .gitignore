@@ -1,2 +1,5 @@
 validator_cli.jar
 data/validator_cli.jar
+target/
+.DS_Store
+*.log

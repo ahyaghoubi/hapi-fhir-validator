@@ -3,8 +3,7 @@
 This directory contains:
 
 1. **`validator_cli.jar`** — the standalone FHIR validator from [hapifhir/org.hl7.fhir.core](https://github.com/hapifhir/org.hl7.fhir.core) (not the separate [HAPI FHIR CLI](https://hapifhir.io/hapi-fhir/docs/tools/hapi_fhir_cli.html) tarball); downloaded automatically on startup when missing.
-2. **Java 17 warm validator service** (`java-service/`) — long-lived HTTP service that validates in-process and keeps caches warm.
-3. **(Optional) Go module `olympus/hapi-fhir-validator`** — legacy/compatibility HTTP client for the Java service.
+2. **Java 17 warm validator service** — Quarkus HTTP service that validates in-process and keeps caches warm.
 
 Use it to validate FHIR **JSON** or **XML** (single resource or `Bundle`) against the base spec, optional **Implementation Guides** (`-ig`), and optional **profiles** (`-profile`).
 
@@ -31,7 +30,6 @@ Use it to validate FHIR **JSON** or **XML** (single resource or `Bundle`) agains
 | Component | Version / notes |
 |-----------|-----------------|
 | **Java** | **17+** for the warm service |
-| **Go** | Optional (legacy client only) |
 | **Network** | Optional after first startup; needed initially if `data/validator_cli.jar` is missing, and also for package download, terminology (`-tx`), or IG URLs unless everything is local/offline |
 
 ---
@@ -43,16 +41,16 @@ hapi-fhir-validator/
 ├── README.md                 ← this file
 ├── data/
 │   └── validator_cli.jar     ← auto-downloaded at startup if missing
-├── java-service/             ← warm HTTP validator (Java 17 + Quarkus)
-├── client.go                 ← optional Go HTTP client
-└── go.mod                    ← optional Go module metadata
+├── pom.xml                   ← Maven project definition
+├── src/                      ← service source code (API, app, domain, infra)
+└── Dockerfile                ← container image build
 ```
 
 ---
 
 ## Workflow node configuration
 
-These keys match an Apollo-style **`config_schema`** and the Go type **`ValidateOptions`** (same JSON field names).
+These keys map to the service request model `ValidateOptions` (same JSON field names).
 
 | # | Key | Type | Required | CLI | Description |
 |---|-----|------|----------|-----|-------------|
@@ -61,20 +59,20 @@ These keys match an Apollo-style **`config_schema`** and the Go type **`Validate
 | 2 | `source_format` | `json` \| `xml` | yes | — | File extension for the temp input (`input.json` / `input.xml`). |
 | 3 | `implementation_guides` | `[{ "value": "..." }]` | no | `-ig` (repeat) | IG sources; see [Implementation guides](#implementation-guides--ig). |
 | 4 | `profiles` | `[{ "value": "..." }]` | no | `-profile` (repeat) | Canonical profile URLs (StructureDefinition), like `meta.profile`. |
-| 4b | `bundle_target` | string | no* | `-bundle` (1st of 2) | Message `Bundle` entry selector, e.g. `DiagnosticReport:0` (first `DiagnosticReport` in the bundle). **Must** be used with **`bundle_profile`**. |
-| 4c | `bundle_profile` | string | no* | `-bundle` (2nd of 2) | Profile URL for that entry (same semantics as the HL7 CLI’s `-bundle` pair). **Must** be used with **`bundle_target`**. |
+| 4b | `bundle_target` | string | no | `-bundle` (1st of 2) | Reserved for CLI parity; currently accepted but not applied by the in-process service validator. |
+| 4c | `bundle_profile` | string | no | `-bundle` (2nd of 2) | Reserved for CLI parity; currently accepted but not applied by the in-process service validator. |
 | 5 | `terminology_server` | string | no | `-tx` | Empty → JAR default (`http://tx.fhir.org`). Use `n/a` for no terminology server. |
 | 6 | `terminology_cache` | string | no | `-txCache` | Cache directory, or `n/a` to disable (common in containers). |
-| 7 | `output_style` | string | no | `-output-style` | Default in Go: **`json`**. Also: `compact`, `xml`, `csv`, `eslint-compact`, `compact-split`. |
+| 7 | `output_style` | string | no | `-output-style` | Service behavior is standardized around OperationOutcome JSON output. |
 | 8 | `severity_floor` | string | no | `-level` | Minimum issue level emitted: `hint`, `warning`, `error`. |
 | 9 | `best_practice` | string | no | `-best-practice` | `ignore`, `hint`, `warning`, `error`. |
 | 10 | `native_schema` | bool | no | `-native` | Add native schema validation (XML/JSON Schema, ShEx) where supported. |
 | 11 | `check_references` | bool | no | `-check-references` | Validate referenced resources when possible. |
 | 12 | `ig_recurse` | bool | no | `-recurse` | Recurse into subfolders when `-ig` is a directory. |
-| 13 | `validation_timeout_ms` | number | no | `-validation-timeout` | Wall-clock cap for the run; also applied as a Go `context` timeout. |
+| 13 | `validation_timeout_ms` | number | no | `-validation-timeout` | Wall-clock cap for a validation run. |
 | 14 | `max_validation_messages` | number | no | `-max-validation-messages` | Stop after this many issues. |
 
-\* **`bundle_target` / `bundle_profile`:** omit both, or set **both**. This matches **FHIR message bundle** validation in the HL7 validator (focus resource profile), as in `FHIR Validation.ipynb`: `-bundle DiagnosticReport:0 https://fhir.nwgenomics.nhs.uk/StructureDefinition/DiagnosticReport`.
+`bundle_target` / `bundle_profile` are kept in the API contract for compatibility with CLI-style configs, but the current in-process engine path validates via profiles and does not execute focused `-bundle` validation.
 
 The service returns **OperationOutcome** bytes (with **`output_style`** as configured).
 
@@ -163,7 +161,6 @@ Validation response includes:
 
 | Variable | Purpose |
 |----------|---------|
-| `FHIR_VALIDATOR_URL` | Optional; only used by the Go compatibility client. |
 | `VALIDATOR_MAX_CONCURRENCY` | Max parallel validations (if set by runtime env). |
 | `VALIDATOR_CLI_JAR_PATH` | Optional override for local jar path (default: `data/validator_cli.jar`). |
 | `VALIDATOR_CLI_JAR_DOWNLOAD_URL` | Optional override for jar download URL used when the local jar file is missing. |
@@ -176,7 +173,7 @@ The Java service now exposes an OpenAPI spec and Swagger UI via Quarkus:
 
 - OpenAPI JSON: `http://localhost:8082/openapi`
 - Swagger UI: `http://localhost:8082/q/swagger-ui`
-- Source spec file: `java-service/src/main/resources/META-INF/openapi.yaml`
+- Source spec file: `src/main/resources/META-INF/openapi.yaml`
 
 ---
 
@@ -188,7 +185,7 @@ The warm service is intended for **high-throughput** validation where JVM startu
 
 ### Run locally (service)
 
-From `java-service/` (requires Java 17 and Maven):
+From the project root (requires Java 17 and Maven):
 
 ```bash
 mvn -q test
@@ -227,13 +224,9 @@ curl -sS -X POST "http://localhost:8082/v1/warmup" -H "Content-Type: application
 mvn -q test
 ```
 
-Optional Go client tests remain available with `go test ./...` if you use the Go module.
-
----
-
 ## Limits and extensions
 
-- **Multiple `-bundle` pairs:** the service currently exposes a **single** pair via **`bundle_target`** + **`bundle_profile`**.
+- **`-bundle` focused validation:** `bundle_target` / `bundle_profile` are currently compatibility fields and are not applied by the in-process validator path.
 - This project is **not** the HAPI **`hapi-fhir-cli`** distribution.
 - Service mode enforces `output_style=json` for deterministic `valid` semantics.
 
@@ -244,8 +237,9 @@ Optional Go client tests remain available with `go test ./...` if you use the Go
 - Added a versioned REST surface (`/v1/*`) and kept `/validate` as compatibility alias.
 - Added operational endpoints for capabilities, warmup, readiness, and runtime config.
 - Added structured API errors with `requestId` and `details`.
-- Java service docs are now REST-first; Go usage is optional compatibility guidance.
+- Java service docs are REST-first and aligned to the Quarkus service in this repository.
 - Added startup bootstrap that downloads `validator_cli.jar` to `data/validator_cli.jar` when missing, and ignores it in Git.
+- Updated service integration for `org.hl7.fhir.validation` 6.3.0 API compatibility.
 
 ---
 
@@ -276,9 +270,9 @@ Optional Go client tests remain available with `go test ./...` if you use the Go
 }
 ```
 
-### NW Genomics message bundle (same idea as `FHIR Validation.ipynb`)
+### NW Genomics message bundle (CLI parity fields)
 
-Point **`implementation_guides`** at an unpacked IG root (folder with `package.json`, e.g. Desktop **`package`** after extracting the NPM package), or at a **`.tgz`**. Use **`bundle_target`** / **`bundle_profile`** instead of validating the whole instance with **`-profile`** alone.
+Point **`implementation_guides`** at an unpacked IG root (folder with `package.json`, e.g. Desktop **`package`** after extracting the NPM package), or at a **`.tgz`**. Keep **`bundle_target`** / **`bundle_profile`** only if you need request-contract compatibility; current in-process validation is profile-based.
 
 ```json
 {
