@@ -19,6 +19,7 @@ Use it to validate FHIR **JSON** or **XML** (single resource or `Bundle`) agains
 - [REST API endpoints](#rest-api-endpoints)
 - [Environment variables](#environment-variables)
 - [OpenAPI / Swagger](#openapi--swagger)
+- [Docker Compose (recommended on servers)](#docker-compose-recommended-on-servers)
 - [Testing](#testing)
 - [Limits and extensions](#limits-and-extensions)
 - [References](#references)
@@ -174,6 +175,56 @@ The Java service now exposes an OpenAPI spec and Swagger UI via Quarkus:
 - OpenAPI JSON: `http://localhost:8082/openapi`
 - Swagger UI: `http://localhost:8082/q/swagger-ui`
 - Source spec file: `src/main/resources/META-INF/openapi.yaml`
+
+---
+
+## Docker Compose (recommended on servers)
+
+The repository includes `docker-compose.yml` for server deployments.
+
+### Install Docker + Compose plugin (Ubuntu)
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER
+```
+
+Log out and back in (or run `newgrp docker`) so your user can run Docker without `sudo`.
+
+### Build and run
+
+From the project root:
+
+```bash
+docker compose up -d --build
+```
+
+### Verify service
+
+```bash
+docker compose ps
+curl -sS http://localhost:8082/v1/ready
+curl -sS http://localhost:8082/v1/capabilities
+```
+
+### Logs and lifecycle
+
+```bash
+docker compose logs -f fhir-validator
+docker compose restart fhir-validator
+docker compose down
+```
+
+Notes:
+- `validator_cli.jar` is downloaded on first startup if missing.
+- The jar is persisted in Docker volume `validator_data` (`/app/data` in container), so subsequent restarts do not re-download it.
 
 ---
 

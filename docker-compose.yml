@@ -1,0 +1,26 @@
+services:
+  fhir-validator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hapi-fhir-validator:local
+    container_name: hapi-fhir-validator
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      QUARKUS_HTTP_HOST: 0.0.0.0
+      QUARKUS_HTTP_PORT: 8082
+      VALIDATOR_MAX_CONCURRENCY: 4
+      VALIDATOR_CLI_JAR_PATH: data/validator_cli.jar
+      VALIDATOR_CLI_JAR_DOWNLOAD_URL: https://github.com/hapifhir/org.hl7.fhir.core/releases/latest/download/validator_cli.jar
+    volumes:
+      - validator_data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  validator_data:
