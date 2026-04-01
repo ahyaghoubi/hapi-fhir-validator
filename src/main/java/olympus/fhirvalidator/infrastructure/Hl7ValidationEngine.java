@@ -2,6 +2,7 @@ package olympus.fhirvalidator.infrastructure;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -28,6 +29,8 @@ public class Hl7ValidationEngine implements ValidatorEngine {
   private Semaphore permits;
   private int maxConcurrency;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  @Inject
+  IgSourceResolver igSourceResolver;
 
   @ConfigProperty(name = "validator.max-concurrency", defaultValue = "4")
   int configuredMaxConcurrency;
@@ -67,10 +70,15 @@ public class Hl7ValidationEngine implements ValidatorEngine {
           .withVersion(opts.fhirVersion)
           .fromNothing();
 
-      // Load IGs (packages, folders, tgz, etc.)
-      for (String ig : valueRows(opts.implementationGuides)) {
-        boolean recursive = Boolean.TRUE.equals(opts.igRecurse);
-        engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, recursive);
+      IgSourceResolver.ResolvedSources resolvedIgs = igSourceResolver.resolve(opts.implementationGuides);
+      try {
+        // Load IGs (packages, folders, tgz, staged uploads, URL-downloaded temp files).
+        for (String ig : resolvedIgs.values()) {
+          boolean recursive = Boolean.TRUE.equals(opts.igRecurse);
+          engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, recursive);
+        }
+      } finally {
+        igSourceResolver.cleanup(resolvedIgs);
       }
 
       // Profiles to validate against (canonical URLs)
@@ -142,8 +150,13 @@ public class Hl7ValidationEngine implements ValidatorEngine {
       ValidationEngine engine = new ValidationEngine.ValidationEngineBuilder()
           .withVersion(version)
           .fromNothing();
-      for (String ig : valueRows(implementationGuides)) {
-        engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, true);
+      IgSourceResolver.ResolvedSources resolvedIgs = igSourceResolver.resolve(implementationGuides);
+      try {
+        for (String ig : resolvedIgs.values()) {
+          engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, true);
+        }
+      } finally {
+        igSourceResolver.cleanup(resolvedIgs);
       }
       log.info("warmup completed requestId={} version={}", requestId, version);
     } catch (Exception e) {

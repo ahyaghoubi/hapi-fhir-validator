@@ -5,19 +5,13 @@ import { OptionsForm, type ValidateFormValues } from '../components/OptionsForm.
 import { OutcomeViewer } from '../components/OutcomeViewer.tsx'
 import { api } from '../lib/api.ts'
 import { encodeUtf8ToBase64 } from '../lib/base64.ts'
-import type { ValidateRequest, ValidateResponse, ValueRow } from '../types/api.ts'
-
-function toValueRows(first: string, second: string): ValueRow[] | undefined {
-  const values = [first, second]
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .map((value) => ({ value }))
-  return values.length ? values : undefined
-}
+import { buildImplementationGuides, buildProfiles } from '../lib/igSources.ts'
+import type { ValidateRequest, ValidateResponse } from '../types/api.ts'
 
 export function ValidatePage() {
   const [response, setResponse] = useState<ValidateResponse | null>(null)
   const [clientError, setClientError] = useState<string | null>(null)
+  const [uploadedIgReferences, setUploadedIgReferences] = useState<string[]>([])
   const { register, handleSubmit, setValue, formState } = useForm<ValidateFormValues>({
     defaultValues: {
       resourceText: '{\n  "resourceType": "Patient"\n}',
@@ -74,12 +68,23 @@ export function ValidatePage() {
         output_style: 'json',
         validation_timeout_ms: timeout,
         max_validation_messages: maxMessages,
-        implementation_guides: toValueRows(values.ig1, values.ig2),
-        profiles: toValueRows(values.profile1, values.profile2),
+        implementation_guides: buildImplementationGuides([values.ig1, values.ig2], uploadedIgReferences),
+        profiles: buildProfiles([values.profile1, values.profile2]),
       },
     }
     mutation.mutate(payload)
   })
+
+  const handleIgFilesSelected = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    try {
+      const uploaded = await Promise.all(Array.from(files).map((file) => api.uploadIg(file)))
+      setUploadedIgReferences((current) => [...current, ...uploaded.map((item) => item.reference ?? '').filter(Boolean)])
+      setClientError(null)
+    } catch {
+      setClientError('IG upload failed. Check file type and backend availability.')
+    }
+  }
 
   return (
     <div className="grid">
@@ -107,7 +112,12 @@ export function ValidatePage() {
         </div>
       </section>
 
-      <OptionsForm register={register} errors={formState.errors} />
+      <OptionsForm
+        register={register}
+        errors={formState.errors}
+        onIgFilesSelected={handleIgFilesSelected}
+        uploadedIgReferences={uploadedIgReferences}
+      />
 
       <button type="button" onClick={() => void onSubmit()} disabled={mutation.isPending}>
         {mutation.isPending ? 'Validating...' : 'Validate'}

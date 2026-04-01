@@ -58,6 +58,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/igs/upload:
+    post:
+      summary: Upload an IG file and return a staged reference
+      operationId: uploadIg
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: IG staged for validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IgUploadResponse'
+        '400':
+          description: Invalid upload payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal validation error
           content:
@@ -237,6 +266,16 @@ components:
         - errorCode
         - errorMessage
         - requestId
+    IgUploadResponse:
+      type: object
+      properties:
+        requestId:
+          type: string
+        reference:
+          type: string
+          description: Staged IG reference suitable for implementation_guides[].value
+        filename:
+          type: string
     WarmupRequest:
       type: object
       properties:

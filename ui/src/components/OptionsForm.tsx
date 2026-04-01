@@ -13,9 +13,11 @@ export type ValidateFormValues = {
 type Props = {
   register: UseFormRegister<ValidateFormValues>
   errors: FieldErrors<ValidateFormValues>
+  onIgFilesSelected: (files: FileList | null) => void
+  uploadedIgReferences: string[]
 }
 
-export function OptionsForm({ register, errors }: Props) {
+export function OptionsForm({ register, errors, onIgFilesSelected, uploadedIgReferences }: Props) {
   return (
     <section className="panel">
       <h2>Validation Options</h2>
@@ -36,6 +38,17 @@ export function OptionsForm({ register, errors }: Props) {
         <label htmlFor="ig1">Implementation guides (optional)</label>
         <input id="ig1" {...register('ig1')} placeholder="hl7.fhir.us.core#6.1.0" />
         <input {...register('ig2')} placeholder="second IG (optional)" />
+        <label htmlFor="ig-files">Upload IG file(s) (.tgz/.json/.xml)</label>
+        <input
+          id="ig-files"
+          type="file"
+          multiple
+          accept=".tgz,.json,.xml"
+          onChange={(event) => onIgFilesSelected(event.target.files)}
+        />
+        {uploadedIgReferences.length ? (
+          <small>Uploaded IG refs: {uploadedIgReferences.join(', ')}</small>
+        ) : null}
       </div>
       <div className="field">
         <label htmlFor="profile1">Profiles (optional)</label>
