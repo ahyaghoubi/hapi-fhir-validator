@@ -7,7 +7,10 @@ RUN mvn -q -DskipTests package
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /workspace/target/quarkus-app/ /app/
-RUN useradd -u 10001 -r -s /usr/sbin/nologin appuser && chown -R appuser:appuser /app
+RUN mkdir -p /app/.fhir/packages /app/data \
+ && useradd -u 10001 -r -m -d /home/appuser -s /usr/sbin/nologin appuser \
+ && chown -R appuser:appuser /app /home/appuser
+ENV HOME=/app
 USER appuser
 EXPOSE 8082
 ENTRYPOINT ["java","-jar","/app/quarkus-run.jar"]
