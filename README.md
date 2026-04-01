@@ -19,6 +19,7 @@ Use it to validate FHIR **JSON** or **XML** (single resource or `Bundle`) agains
 - [REST API endpoints](#rest-api-endpoints)
 - [Environment variables](#environment-variables)
 - [OpenAPI / Swagger](#openapi--swagger)
+- [Web UI (React + Vite)](#web-ui-react--vite)
 - [Docker Compose (recommended on servers)](#docker-compose-recommended-on-servers)
 - [Testing](#testing)
 - [Limits and extensions](#limits-and-extensions)
@@ -178,6 +179,35 @@ The Java service now exposes an OpenAPI spec and Swagger UI via Quarkus:
 
 ---
 
+## Web UI (React + Vite)
+
+This repository now includes a frontend in `ui/` for validation and operations workflows.
+
+### What it supports
+
+- Validate JSON/XML payloads with full `ValidateOptions` support
+- Decode and inspect `OperationOutcome` issue details
+- Trigger warmup and inspect `/v1/ready`, `/v1/capabilities`, and `/v1/config`
+
+### Run UI locally
+
+```bash
+cd ui
+npm install --cache .npm-cache
+npm run gen:types
+npm run dev
+```
+
+UI runs on `http://localhost:5173` and proxies `/v1/*` and `/validate` to `http://localhost:8082` in development.
+
+### UI environment variable
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_API_BASE_URL` | Optional API base URL. Leave empty for same-origin paths, or set for split-host deployment. |
+
+---
+
 ## Docker Compose (recommended on servers)
 
 The repository includes `docker-compose.yml` for server deployments.
@@ -212,12 +242,15 @@ docker compose up -d --build
 docker compose ps
 curl -sS http://localhost:8082/v1/ready
 curl -sS http://localhost:8082/v1/capabilities
+# UI dev server (if compose profile is started)
+curl -I http://localhost:5173
 ```
 
 ### Logs and lifecycle
 
 ```bash
 docker compose logs -f fhir-validator
+docker compose logs -f fhir-validator-ui
 docker compose restart fhir-validator
 docker compose down
 ```
@@ -226,6 +259,8 @@ Notes:
 - `validator_cli.jar` is downloaded on first startup if missing.
 - The jar is persisted in host path `./data` (mounted to `/app/data` in container), so subsequent restarts do not re-download it.
 - For a 4 GB server, defaults are tuned to `JAVA_TOOL_OPTIONS=-Xms256m -Xmx1536m -XX:+UseG1GC` and `VALIDATOR_MAX_CONCURRENCY=2`.
+- `fhir-validator-ui` serves the React app on `http://localhost:5173` and proxies API requests to the validator service.
+- For a remote validator host, set `VITE_API_BASE_URL` in `docker-compose.yml` (example: `http://135.220.74.18:8082`).
 
 If this is your first run with the bind mount, initialize writable permissions:
 
@@ -293,6 +328,8 @@ mvn -q test
 
 ## What’s New
 
+- Added a React + Vite UI module (`ui/`) for validation workflows and operations visibility.
+- Added generated OpenAPI-based TypeScript types for the UI API client.
 - Added a versioned REST surface (`/v1/*`) and kept `/validate` as compatibility alias.
 - Added operational endpoints for capabilities, warmup, readiness, and runtime config.
 - Added structured API errors with `requestId` and `details`.

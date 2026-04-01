@@ -3,3 +3,8 @@ data/validator_cli.jar
 target/
 .DS_Store
 *.log
+ui/node_modules/
+ui/dist/
+ui/.npm-cache/
+ui/coverage/
+ui/.env.local
