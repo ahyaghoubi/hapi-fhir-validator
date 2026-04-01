@@ -42,6 +42,8 @@ public class IgSourceResolver {
       Path staged = uploadStore.resolveStagedPath(value);
       if (staged != null) {
         resolved.add(staged.toString());
+        // Staged uploads are one-time use and must be removed after validate attempt.
+        cleanup.add(staged);
       } else {
         resolved.add(value);
       }
@@ -55,7 +57,7 @@ public class IgSourceResolver {
       try {
         Files.deleteIfExists(p);
       } catch (IOException ignored) {
-        // Best-effort cleanup for URL downloads.
+        // Best-effort cleanup for temporary IG files (URL downloads + staged uploads).
       }
     }
   }

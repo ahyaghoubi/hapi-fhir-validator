@@ -75,11 +75,12 @@ public class Hl7ValidationEngine implements ValidatorEngine {
         // Load IGs (packages, folders, tgz, staged uploads, URL-downloaded temp files).
         for (String ig : resolvedIgs.values()) {
           boolean recursive = Boolean.TRUE.equals(opts.igRecurse);
-          engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, recursive);
+          try {
+            engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, recursive);
+          } catch (Exception e) {
+            throw new IllegalArgumentException("failed to load implementation guide: " + ig + " (" + e.getMessage() + ")");
+          }
         }
-      } finally {
-        igSourceResolver.cleanup(resolvedIgs);
-      }
 
       // Profiles to validate against (canonical URLs)
       List<String> profiles = valueRows(opts.profiles);
@@ -97,14 +98,17 @@ public class Hl7ValidationEngine implements ValidatorEngine {
       byte[] outcomeJson = new JsonParser().composeString(outcome).getBytes(StandardCharsets.UTF_8);
       boolean valid = computeValidFromOutcomeJson(outcomeJson);
 
-      ValidateResult r = new ValidateResult();
-      r.valid = valid;
-      r.outcomeJson = outcomeJson;
-      r.exitCode = valid ? 0 : 1;
-      r.stderr = "";
-      r.durationMs = (System.nanoTime() - start) / 1_000_000L;
-      r.requestId = requestId;
-      return r;
+        ValidateResult r = new ValidateResult();
+        r.valid = valid;
+        r.outcomeJson = outcomeJson;
+        r.exitCode = valid ? 0 : 1;
+        r.stderr = "";
+        r.durationMs = (System.nanoTime() - start) / 1_000_000L;
+        r.requestId = requestId;
+        return r;
+      } finally {
+        igSourceResolver.cleanup(resolvedIgs);
+      }
     } catch (Exception e) {
       log.warn("validation failed requestId={}", requestId, e);
       throw new IllegalArgumentException("validation failed: " + e.getMessage());
@@ -153,7 +157,11 @@ public class Hl7ValidationEngine implements ValidatorEngine {
       IgSourceResolver.ResolvedSources resolvedIgs = igSourceResolver.resolve(implementationGuides);
       try {
         for (String ig : resolvedIgs.values()) {
-          engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, true);
+          try {
+            engine.getIgLoader().loadIg(engine.getIgs(), engine.getBinaries(), ig, true);
+          } catch (Exception e) {
+            throw new IllegalArgumentException("failed to warmup implementation guide: " + ig + " (" + e.getMessage() + ")");
+          }
         }
       } finally {
         igSourceResolver.cleanup(resolvedIgs);

@@ -135,6 +135,8 @@ Example response:
 
 Use `reference` as an `implementation_guides[].value` in `/v1/validate`.
 
+Uploaded staged references are temporary and one-time: files are removed after each validate attempt (including failures). Re-upload if you need to retry.
+
 ### Multiple IGs
 
 ```json

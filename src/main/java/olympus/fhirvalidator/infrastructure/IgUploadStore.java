@@ -43,7 +43,7 @@ public class IgUploadStore {
     }
     Path p = ensureUploadDir().resolve(fileName).normalize();
     if (!Files.exists(p)) {
-      throw new IllegalArgumentException("staged IG not found: " + value);
+      throw new IllegalArgumentException("staged IG not found: " + value + " (resolved path: " + p + ")");
     }
     return p;
   }

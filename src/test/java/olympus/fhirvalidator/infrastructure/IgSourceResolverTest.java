@@ -61,6 +61,8 @@ class IgSourceResolverTest {
     row.value = "staged://abc-package.tgz";
     IgSourceResolver.ResolvedSources resolved = resolver.resolve(List.of(row));
     assertEquals(staged.toString(), resolved.values().get(0));
+    resolver.cleanup(resolved);
+    assertFalse(Files.exists(staged));
   }
 
   @Test
